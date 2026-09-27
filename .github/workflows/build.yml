@@ -18,14 +18,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # This project targets macOS only.
         include:
           - name: macos-arm64
             os: macos-latest
           - name: macos-intel
             os: macos-latest
             rosetta: true
-          - name: windows
-            os: windows-latest
     defaults:
       run:
         shell: bash
@@ -37,14 +36,7 @@ jobs:
           # to embed the version into the binaries.
           fetch-depth: 0
 
-      - name: Set up Python (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.14'
-
-      - name: Install Python 3.14 with Tcl/Tk 9 (macOS, universal2)
-        if: runner.os == 'macOS'
+      - name: Install Python 3.14 with Tcl/Tk 9 (universal2)
         # The python.org installer is a universal2 binary bundling Tcl/Tk 9.0.4,
         # so the same package provides both the arm64 and the x86_64 (Rosetta) build.
         run: |
@@ -58,31 +50,16 @@ jobs:
           softwareupdate --install-rosetta --agree-to-license
           echo "PYWRAP=arch -x86_64" >> "$GITHUB_ENV"
 
-      - name: Install libusb (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Invoke-WebRequest https://sourceforge.net/projects/libusb-win32/files/libusb-win32-releases/1.2.6.0/libusb-win32-bin-1.2.6.0.zip/download -OutFile libusb-win32-bin-1.2.6.0.zip
-          Expand-Archive libusb-win32-bin-1.2.6.0.zip .
-          Move-Item libusb-win32-bin-1.2.6.0\bin\amd64\libusb0.dll .
-
       - name: Build
         run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            BASE=python
-            VPY=.venv/Scripts/python.exe
-          else
-            BASE="$PYEXE"
-            VPY=.venv/bin/python
-          fi
-          $PYWRAP "$BASE" -m venv .venv
+          $PYWRAP "$PYEXE" -m venv .venv
+          VPY=.venv/bin/python
           $PYWRAP "$VPY" -m pip install --upgrade pip
           $PYWRAP "$VPY" -m pip install -r requirements.txt
           $PYWRAP "$VPY" -OO -m PyInstaller pmca-console.spec
           $PYWRAP "$VPY" -OO -m PyInstaller pmca-gui.spec
 
-      - name: Add architecture to macOS artifact names
-        if: runner.os == 'macOS'
+      - name: Add architecture to artifact names
         run: |
           arch=arm64
           if [ "${{ matrix.rosetta }}" = "true" ]; then arch=x86_64; fi
