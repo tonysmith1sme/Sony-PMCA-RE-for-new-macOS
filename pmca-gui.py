@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """A simple gui interface"""
 import sys
+import tkinter
 import traceback
 import webbrowser
 
@@ -26,7 +27,8 @@ class PrintRedirector(object):
    self.parent.write(str)
   self.func(str)
  def flush(self):
-  self.parent.flush()
+  if self.parent:
+   self.parent.flush()
 
 
 class AppLoadTask(BackgroundTask):
@@ -359,8 +361,22 @@ class TweakDialog(UiDialog):
    self.endFlag.set()
 
 
+def checkTk():
+ """Old Tcl/Tk builds cannot draw windows on recent macOS versions"""
+ if tkinter.TkVersion < 8.6:
+  msg = 'The Tcl/Tk version of this Python (%.1f) is too old to draw windows on this macOS version, which results in a blank window.\nPlease install a Python that bundles Tcl/Tk 8.6 or later, for example the installer from python.org, or Homebrew Python with "brew install python-tk@3.14".' % tkinter.TkVersion
+  print(msg, file=sys.stderr)
+  try:
+   from tkinter import messagebox
+   messagebox.showwarning('OpenMemories: pmca-gui', msg)
+  except Exception:
+   pass
+  sys.exit(1)
+
+
 def main():
  """Gui main"""
+ checkTk()
  ui = MainUi('OpenMemories: pmca-gui' + (' ' + version if version else ''))
  ui.mainloop()
 
