@@ -5,3 +5,5 @@ __pycache__/
 .venv/
 venv/
 frozenversion.py
+
+.DS_Store
