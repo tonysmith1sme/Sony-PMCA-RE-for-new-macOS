@@ -1,53 +1,124 @@
 name: Build
-on: push
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  PyInstaller:
+  build:
+    name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2019, macos-10.15]
+        include:
+          - name: macos-arm64
+            os: macos-latest
+          - name: macos-intel
+            os: macos-latest
+            rosetta: true
+          - name: windows
+            os: windows-latest
     defaults:
       run:
         shell: bash
+
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-python@v2
-      with:
-        python-version: 3.6
-    - name: Install libusb (windows)
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: |
-        Invoke-WebRequest http://jaist.dl.sourceforge.net/project/libusb-win32/libusb-win32-releases/1.2.6.0/libusb-win32-bin-1.2.6.0.zip -OutFile libusb-win32-bin-1.2.6.0.zip
-        Expand-Archive libusb-win32-bin-1.2.6.0.zip .
-        Move-Item libusb-win32-bin-1.2.6.0\bin\amd64\libusb0.dll .
-        echo $env:GITHUB_WORKSPACE | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-    - name: Install libusb (macos)
-      if: runner.os == 'macOS'
-      run: |
-        brew install libusb
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-    - name: Build
-      run: |
-        python -OO -m PyInstaller pmca-console.spec
-        python -OO -m PyInstaller pmca-gui.spec
-    - name: Test
-      run: |
-        dist/pmca-console* -h
-    - name: Upload
-      uses: actions/upload-artifact@v2
-      with:
-        name: ${{ runner.os }} binaries
-        path: dist/*
-    - name: Release
-      if: ${{ startsWith(github.ref, 'refs/tags/') && runner.os != 'Windows' }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        tag="${GITHUB_REF##*/}"
-        assets="$(find dist/* -exec echo -a {} \;)"
-        hub release create $assets -m "$tag" "$tag" || hub release edit $assets -m "" "$tag"
+      - uses: actions/checkout@v4
+        with:
+          # Full history is required: the build scripts run `git describe`
+          # to embed the version into the binaries.
+          fetch-depth: 0
+
+      - name: Set up Python (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Set up Python with Tcl/Tk 9 (macOS arm64)
+        if: runner.os == 'macOS' && matrix.rosetta != true
+        run: |
+          brew install python@3.14 python-tk@3.14 libusb
+          echo "PYEXE=$(brew --prefix python@3.14)/bin/python3.14" >> "$GITHUB_ENV"
+
+      - name: Set up Rosetta 2 with x86_64 Homebrew and Python (macOS intel)
+        if: matrix.rosetta
+        run: |
+          softwareupdate --install-rosetta --agree-to-license
+          arch -x86_64 /bin/bash -c \
+            "NONINTERACTIVE=1 $(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          /usr/local/bin/brew install python@3.14 python-tk@3.14 libusb
+          echo "PYEXE=/usr/local/opt/python@3.14/bin/python3.14" >> "$GITHUB_ENV"
+
+      - name: Install libusb (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest http://jaist.dl.sourceforge.net/project/libusb-win32/libusb-win32-releases/1.2.6.0/libusb-win32-bin-1.2.6.0.zip -OutFile libusb-win32-bin-1.2.6.0.zip
+          Expand-Archive libusb-win32-bin-1.2.6.0.zip .
+          Move-Item libusb-win32-bin-1.2.6.0\bin\amd64\libusb0.dll .
+
+      - name: Build
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            BASE=python
+            VPY=.venv/Scripts/python.exe
+          else
+            BASE="$PYEXE"
+            VPY=.venv/bin/python
+          fi
+          "$BASE" -m venv .venv
+          "$VPY" -m pip install --upgrade pip
+          "$VPY" -m pip install -r requirements.txt
+          "$VPY" -OO -m PyInstaller pmca-console.spec
+          "$VPY" -OO -m PyInstaller pmca-gui.spec
+
+      - name: Add architecture to macOS artifact names
+        if: runner.os == 'macOS'
+        run: |
+          arch=arm64
+          if [ "${{ matrix.rosetta }}" = "true" ]; then arch=x86_64; fi
+          for f in dist/*-osx*; do mv "$f" "${f/-osx/-osx-$arch}"; done
+          ls -l dist/
+
+      - name: Test
+        run: |
+          exe=$(ls dist/pmca-console* | head -1)
+          "$exe" -h
+          "$exe" --version
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub release with binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" dist/* --title "$TAG" --generate-notes
