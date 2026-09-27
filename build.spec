@@ -2,7 +2,9 @@
 
 import os, shutil, subprocess, sys
 
-excludes = ['bz2', 'cffi', 'Crypto', 'doctest', 'ftplib', 'gmpy', 'gmpy2', 'lzma', 'M2Crypto', 'numpy', 'pickle', 'plistlib', 'py_compile', 'tack', 'tarfile', 'tracemalloc']
+excludes = ['bz2', 'cffi', 'Crypto', 'doctest', 'ftplib', 'gmpy', 'gmpy2', 'lzma', 'M2Crypto', 'numpy', 'plistlib', 'py_compile', 'tack', 'tarfile', 'tracemalloc']
+# Note: 'pickle' must not be excluded: modern PyInstaller always runs its
+# multiprocessing runtime hook at startup, which imports pickle.
 if sys.platform != 'win32':
  excludes.append('pmca.usb.driver.windows')
 if sys.platform != 'darwin':
