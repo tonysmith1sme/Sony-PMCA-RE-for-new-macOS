@@ -43,26 +43,26 @@ jobs:
         with:
           python-version: '3.14'
 
-      - name: Set up Python with Tcl/Tk 9 (macOS arm64)
-        if: runner.os == 'macOS' && matrix.rosetta != true
+      - name: Install Python 3.14 with Tcl/Tk 9 (macOS, universal2)
+        if: runner.os == 'macOS'
+        # The python.org installer is a universal2 binary bundling Tcl/Tk 9.0.4,
+        # so the same package provides both the arm64 and the x86_64 (Rosetta) build.
         run: |
-          brew install python@3.14 python-tk@3.14 libusb
-          echo "PYEXE=$(brew --prefix python@3.14)/bin/python3.14" >> "$GITHUB_ENV"
+          curl -fsSL "https://www.python.org/ftp/python/3.14.7/python-3.14.7-macos11.pkg" -o /tmp/python.pkg
+          sudo installer -pkg /tmp/python.pkg -target /
+          echo "PYEXE=/Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14" >> "$GITHUB_ENV"
 
-      - name: Set up Rosetta 2 with x86_64 Homebrew and Python (macOS intel)
+      - name: Install Rosetta 2 (macOS x86_64)
         if: matrix.rosetta
         run: |
           softwareupdate --install-rosetta --agree-to-license
-          arch -x86_64 /bin/bash -c \
-            "NONINTERACTIVE=1 $(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          /usr/local/bin/brew install python@3.14 python-tk@3.14 libusb
-          echo "PYEXE=/usr/local/opt/python@3.14/bin/python3.14" >> "$GITHUB_ENV"
+          echo "PYWRAP=arch -x86_64" >> "$GITHUB_ENV"
 
       - name: Install libusb (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Invoke-WebRequest http://jaist.dl.sourceforge.net/project/libusb-win32/libusb-win32-releases/1.2.6.0/libusb-win32-bin-1.2.6.0.zip -OutFile libusb-win32-bin-1.2.6.0.zip
+          Invoke-WebRequest https://sourceforge.net/projects/libusb-win32/files/libusb-win32-releases/1.2.6.0/libusb-win32-bin-1.2.6.0.zip/download -OutFile libusb-win32-bin-1.2.6.0.zip
           Expand-Archive libusb-win32-bin-1.2.6.0.zip .
           Move-Item libusb-win32-bin-1.2.6.0\bin\amd64\libusb0.dll .
 
@@ -75,11 +75,11 @@ jobs:
             BASE="$PYEXE"
             VPY=.venv/bin/python
           fi
-          "$BASE" -m venv .venv
-          "$VPY" -m pip install --upgrade pip
-          "$VPY" -m pip install -r requirements.txt
-          "$VPY" -OO -m PyInstaller pmca-console.spec
-          "$VPY" -OO -m PyInstaller pmca-gui.spec
+          $PYWRAP "$BASE" -m venv .venv
+          $PYWRAP "$VPY" -m pip install --upgrade pip
+          $PYWRAP "$VPY" -m pip install -r requirements.txt
+          $PYWRAP "$VPY" -OO -m PyInstaller pmca-console.spec
+          $PYWRAP "$VPY" -OO -m PyInstaller pmca-gui.spec
 
       - name: Add architecture to macOS artifact names
         if: runner.os == 'macOS'
