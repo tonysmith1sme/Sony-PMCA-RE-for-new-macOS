@@ -13,9 +13,21 @@ The application should work fine on Windows using the operating system's mass st
 Download the [latest stable release](https://github.com/ma1co/Sony-PMCA-RE/releases/latest) or the newest [development build](https://ci.appveyor.com/project/ma1co/sony-pmca-re/build/artifacts).
 
 ### macOS
-macOS binaries are also distributed, but less tested than the Windows equivalents. Getting the USB drivers to work may require some fiddling. To communicate with cameras in mass storage mode, Sony's [Camera Driver](https://support.d-imaging.sony.co.jp/mac/driver/11/ja/) has to be installed. Make sure to close all applications which could access USB drivers, including Photos, Dropbox and Google Drive.
+macOS binaries are also distributed, but less tested than the Windows equivalents. Getting the USB drivers to work may require some fiddling. To communicate with cameras in mass storage mode using the native driver, Sony's [Camera Driver](https://support.d-imaging.sony.co.jp/mac/driver/11/ja/) has to be installed. Note that these Sony kernel extensions no longer load on recent macOS versions (especially on Apple Silicon machines); in that case, only the libusb driver (used for app installation over MTP) and the firmware updater mode are available. Make sure to close all applications which could access USB drivers, including Photos, Dropbox and Google Drive.
 
 The latest release binaries can be found in the [release section](https://github.com/ma1co/Sony-PMCA-RE/releases/latest).
+
+#### Running from source on recent macOS
+On recent macOS versions, the graphical application requires Tcl/Tk 8.6.15 or newer (Tcl/Tk 9.x is recommended). With older Tcl/Tk versions — for example the one bundled with the system Python in `/usr/bin/python3` — the window stays completely blank.
+
+Use a Python that bundles a current Tcl/Tk, for example Homebrew Python with the `python-tk` addon, or the [installers from python.org](https://www.python.org/downloads/macos/), which ship their own Tcl/Tk:
+```bash
+brew install python@3.14 python-tk@3.14
+python3.14 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python pmca-gui.py    # for the gui application
+.venv/bin/python pmca-console.py  # for the command line application
+```
 
 ### Linux
 The application uses Python 3 and should work fine on Linux using libusb drivers.
